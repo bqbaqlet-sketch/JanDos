@@ -1,6 +1,7 @@
-// Қарапайым service worker: қолданба қабығын кэштейді / simple app-shell cache
-const CACHE = 'jandos-v1';
-const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/i18n.js', 'js/config.js', 'icons/icon.svg'];
+// Қарапайым service worker / простой service worker. Нұсқа URL параметрінен алынады (?v=...)
+const V = new URL(self.location.href).searchParams.get('v') || '0';
+const CACHE = 'jandos-' + V;
+const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/i18n.js', 'js/cities.js', 'js/version.js', 'js/config.js', 'icons/icon.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
