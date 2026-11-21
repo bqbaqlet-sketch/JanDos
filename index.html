@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="kk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>JanDos</title>
+  <meta name="description" content="JanDos — ветеринарлар мен жануарлар иелерінің платформасы / Platform for vets and pet owners">
+  <meta name="theme-color" content="#0f9d8f">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="JanDos">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="logo" href="#/">
+      <svg viewBox="0 0 48 48" width="34" height="34" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#0f9d8f"/><g fill="#fff"><ellipse cx="14" cy="20" rx="3.6" ry="4.6"/><ellipse cx="22" cy="13.5" rx="3.6" ry="4.8"/><ellipse cx="30" cy="13.5" rx="3.6" ry="4.8"/><ellipse cx="38" cy="20" rx="3.6" ry="4.6"/><path d="M24 22c-6 0-11 5-11 9.5 0 3 2.6 4.5 5.5 4.5 2 0 3.6-.9 5.5-.9s3.5.9 5.5.9c2.9 0 5.5-1.5 5.5-4.5C35 27 30 22 24 22z"/></g><path d="M24 26v8M20 30h8" stroke="#0f9d8f" stroke-width="2.6" stroke-linecap="round"/></svg>
+      <span>Jan<b>Dos</b></span>
+    </a>
+    <nav class="nav-desktop" id="navDesktop"></nav>
+    <div class="top-actions">
+      <button class="chip" id="langBtn" type="button" aria-label="Language">KZ</button>
+      <div id="userBox"></div>
+    </div>
+  </header>
+
+  <main id="app" class="container"></main>
+
+  <nav class="nav-mobile" id="navMobile"></nav>
+  <div id="toast" class="toast" role="status"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
