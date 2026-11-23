@@ -142,7 +142,7 @@ document.addEventListener('click', () => langPop.classList.add('hidden'));
 function renderChrome() {
   const items = [['#/', 'home', 'nav_home'], ['#/vets', 'steth', 'nav_vets'], ['#/ai', 'aid', 'nav_ai'], ['#/chats', 'chat', 'nav_chats'], ['#/settings', 'sliders', 'nav_settings']];
   const cur = location.hash.split('/')[1] || '';
-  const key = { about: 'settings', register: 'settings', login: 'settings' }[cur] || cur;
+  const key = { about: 'settings', register: 'settings', login: 'settings', chat: 'chats', room: 'chats' }[cur] || cur;
   const active = (h) => ('#/' + key) === h || (h === '#/' && key === '');
   document.getElementById('navDesktop').innerHTML = items.map(([h, , k]) => `<a href="${h}" class="${active(h) ? 'active' : ''}">${t(k)}</a>`).join('');
   document.getElementById('navMobile').innerHTML = items.map(([h, i, k]) => `<a href="${h}" class="${active(h) ? 'active' : ''}">${ic(i, 22)}<span class="l">${t(k)}</span></a>`).join('');
@@ -173,6 +173,7 @@ async function route() {
     else if (p1 === 'ai') pageAI();
     else if (p1 === 'chats') await pageChats();
     else if (p1 === 'chat' && p2) await pageChat(p2);
+    else if (p1 === 'room' && p2) await pageRoom(p2);
     else pageHome();
   } catch (e) { console.error(e); $app.innerHTML = `<div class="card">${t('error')}<br><small class="muted">${esc(e.message || e)}</small></div>`; }
 }
@@ -552,18 +553,27 @@ function renderAIChat(first = false) {
 }
 
 /* ---------- chats ---------- */
+const ROOMS = ['general', 'dogs', 'cats', 'farm', 'ask_vet'];
+const isAdmin = () => state.profile?.role === 'admin';
+
 async function pageChats() {
   if (!requireLogin()) return;
   const { data, error } = await sb.from('conversations')
     .select('id,created_at,vet_id,owner_id,vets(full_name,photo_url,user_id),owner:profiles!conversations_owner_id_fkey(full_name,avatar_url)')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  $app.innerHTML = `<h1>${t('chats_title')}</h1>` + ((data || []).length ? data.map((c) => {
+  const personal = (data || []).map((c) => {
     const iAmVet = c.vets?.user_id === state.user.id;
     const name = iAmVet ? c.owner?.full_name : c.vets?.full_name;
     const img = iAmVet ? c.owner?.avatar_url : c.vets?.photo_url;
     return `<a class="list-item" href="#/chat/${c.id}">${img ? `<img class="avatar" src="${esc(img)}" referrerpolicy="no-referrer" alt="">` : `<span class="avatar">${esc(initials(name))}</span>`}<span class="t"><b>${esc(name || '—')}</b></span><span class="chev">${ic('chev', 18)}</span></a>`;
-  }).join('') : `<div class="empty"><div class="big">${ic('chat', 40)}</div><p class="muted" style="margin:0">${t('chats_empty')}</p></div>`);
+  }).join('');
+  $app.innerHTML = `
+    <h1>${t('chats_title')}</h1>
+    <h3 class="section-title" style="margin-top:6px">${t('rooms_title')}</h3>
+    ${ROOMS.map((r) => linkRow('#/room/' + r, 'chat', t('room_' + r), t('room_' + r + '_d'))).join('')}
+    <h3 class="section-title">${t('personal_chats')}</h3>
+    ${personal || `<p class="muted">${t('chats_empty')}</p>`}`;
 }
 
 async function pageChat(id) {
@@ -630,6 +640,123 @@ async function pageChat(id) {
       if (ins.error) throw ins.error;
       add(ins.data); input.value = ''; pending = null; fileEl.value = ''; document.getElementById('pv').innerHTML = '';
     } catch (err) { console.error(err); toast(t('error')); }
+    btn.disabled = false;
+  };
+}
+
+/* ---------- community rooms ---------- */
+async function pageRoom(id) {
+  if (!requireLogin()) return;
+  if (!ROOMS.includes(id)) { location.hash = '#/chats'; return; }
+  const [{ data: blk }, { data: rows, error }] = await Promise.all([
+    sb.from('blocked_users').select('user_id').eq('user_id', state.user.id).maybeSingle(),
+    sb.from('room_messages').select('id,sender_id,body,image_url,created_at,profiles(full_name,avatar_url)')
+      .eq('room_id', id).order('created_at', { ascending: false }).limit(100)
+  ]);
+  if (error) throw error;
+  const blocked = !!blk;
+  const admin = isAdmin();
+  const people = new Map();
+  const msgs = (rows || []).slice().reverse();
+  msgs.forEach((m) => people.set(m.sender_id, m.profiles));
+  const seen = new Set();
+
+  $app.innerHTML = `
+    <a class="back" href="#/chats">${t('back')}</a>
+    <h2 style="margin-bottom:8px">${esc(t('room_' + id))}</h2>
+    <div class="notice">${t('community_notice')}</div>
+    <div class="chat-box" style="height:calc(100vh - 340px)">
+      <div class="chat-scroll" id="roomScroll"><div class="bubble-wrap" id="roomMsgs"></div></div>
+      <div id="pv"></div>
+      ${blocked ? `<p class="muted" style="text-align:center">${t('blocked_msg')}</p>` : `
+      <form class="composer" id="roomForm">
+        <label class="icon-btn" style="cursor:pointer" title="${t('attach')}">${ic('camera', 20)}<input type="file" id="file" accept="image/*" hidden></label>
+        <textarea id="roomInput" rows="1" maxlength="1000" placeholder="${esc(t('type_msg'))}"></textarea>
+        <button class="icon-btn send" title="${t('send')}">${ic('send', 20)}</button>
+      </form>`}
+    </div>`;
+
+  const wrap = document.getElementById('roomMsgs');
+  const scroll = document.getElementById('roomScroll');
+  const html = (m) => {
+    const mine = m.sender_id === state.user.id;
+    const p = people.get(m.sender_id);
+    const canDel = mine || admin; const canBlock = admin && !mine;
+    return `<div class="bubble ${mine ? 'me' : 'other'}" data-id="${m.id}">
+      ${mine ? '' : `<div class="b-name">${esc(p?.full_name || '—')}</div>`}
+      ${m.image_url ? `<a href="${esc(m.image_url)}" target="_blank" rel="noopener"><img src="${esc(m.image_url)}" alt=""></a>` : ''}${m.body ? md(m.body) : ''}
+      <time>${fmtTime(m.created_at)}</time>
+      ${canDel || canBlock ? `<div class="b-actions">${canDel ? `<button data-act="del" data-id="${m.id}">${t('delete')}</button>` : ''}${canBlock ? `<button data-act="block" data-u="${m.sender_id}">${t('block')}</button>` : ''}</div>` : ''}
+    </div>`;
+  };
+  const add = (m) => {
+    if (seen.has(m.id)) return; seen.add(m.id);
+    wrap.querySelector('.muted')?.remove();
+    wrap.insertAdjacentHTML('beforeend', html(m));
+    scroll.scrollTop = scroll.scrollHeight;
+  };
+  if (!msgs.length) wrap.innerHTML = `<p class="muted" style="text-align:center">${t('no_msgs')}</p>`;
+  msgs.forEach(add);
+
+  wrap.onclick = async (e) => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    if (b.dataset.act === 'del') {
+      if (!confirm(t('confirm_delete'))) return;
+      const r = await sb.from('room_messages').delete().eq('id', b.dataset.id);
+      if (r.error) return toast(t('error'));
+      wrap.querySelector(`.bubble[data-id="${b.dataset.id}"]`)?.remove();
+    } else if (b.dataset.act === 'block') {
+      if (!confirm(t('confirm_block'))) return;
+      const r = await sb.from('blocked_users').insert({ user_id: b.dataset.u });
+      if (r.error && r.error.code !== '23505') return toast(t('error'));
+      toast(t('blocked_done'));
+    }
+  };
+
+  state.channel = sb.channel('room-' + id)
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_id=eq.${id}` }, async (pl) => {
+      const m = pl.new;
+      if (!people.has(m.sender_id)) {
+        const { data } = await sb.from('profiles').select('full_name,avatar_url').eq('id', m.sender_id).maybeSingle();
+        people.set(m.sender_id, data);
+      }
+      add(m);
+    })
+    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'room_messages' }, (pl) => {
+      wrap.querySelector(`.bubble[data-id="${pl.old.id}"]`)?.remove();
+    })
+    .subscribe();
+
+  if (blocked) return;
+  let pending = null;
+  const fileEl = document.getElementById('file');
+  fileEl.onchange = () => {
+    const f = fileEl.files[0]; if (!f) return; pending = f;
+    document.getElementById('pv').innerHTML = `<div class="preview"><img src="${URL.createObjectURL(f)}" alt=""><button type="button" class="chip" id="rmImg">✕</button></div>`;
+    document.getElementById('rmImg').onclick = () => { pending = null; fileEl.value = ''; document.getElementById('pv').innerHTML = ''; };
+  };
+  document.getElementById('roomForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const input = document.getElementById('roomInput'); const body = input.value.trim();
+    if (!body && !pending) return;
+    const btn = e.target.querySelector('.send'); btn.disabled = true;
+    try {
+      let image_url = null;
+      if (pending) {
+        const blob = await compressImage(pending);
+        const path = `room/${id}/${crypto.randomUUID()}.jpg`;
+        const up = await sb.storage.from('chat-images').upload(path, blob, { contentType: 'image/jpeg' });
+        if (up.error) throw up.error;
+        image_url = sb.storage.from('chat-images').getPublicUrl(path).data.publicUrl;
+      }
+      const ins = await sb.from('room_messages').insert({ room_id: id, sender_id: state.user.id, body: body || null, image_url }).select().single();
+      if (ins.error) throw ins.error;
+      people.set(state.user.id, { full_name: state.profile?.full_name, avatar_url: state.profile?.avatar_url });
+      add(ins.data); input.value = ''; pending = null; fileEl.value = ''; document.getElementById('pv').innerHTML = '';
+    } catch (err) {
+      console.error(err);
+      toast(String(err?.message || '').includes('rate_limit') ? t('rate_limit') : t('error'));
+    }
     btn.disabled = false;
   };
 }
